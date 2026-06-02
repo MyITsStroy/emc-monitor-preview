@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMC Monitor</title>
+<meta name="description" content="EMC 시험 데이터 분석 및 관리">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Outfit', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      colors: {
+        background: '#EBECEE',
+        surface: '#F4F5F7',
+        foreground: '#1A1A1A',
+        muted: '#6B6D76',
+        border: '#D8D9DD',
+        accent: { DEFAULT: '#FF578A', dim: '#E64678' },
+        'emc-green': '#10B981',
+        'emc-amber': '#F59E0B',
+        'emc-red': '#EF4444',
+      },
+    },
+  },
+}
+</script>
+<style>
+:root{
+  --variance:4;
+  --motion:4;
+  --density:5;
+  --easing:cubic-bezier(0.16,1,0.3,1);
+  --duration:calc(0.30s + (var(--motion) * 0.04s));
+  --pad-card:calc(1.75rem - (var(--density) * 0.10rem));
+  --gap-grid:calc(1.25rem - (var(--density) * 0.05rem));
+  --hover-scale:calc(1 + (var(--motion) * 0.0025));
+  --radius:1.5rem;
+  --radius-card:1.5rem;
+  --radius-shell:2.25rem;
+  --radius-sm:0.75rem;
+  --radius-lg:2.25rem;
+  --bg:#EBECEE;
+  --surface:#F4F5F7;
+  --ink:#1A1A1A;
+  --muted:#6B6D76;
+  --border:#D8D9DD;
+  --accent:#FF578A;
+  --accent-soft:rgba(255,87,138,0.10);
+  --emc-green:#10B981;
+  --emc-amber:#F59E0B;
+  --emc-red:#EF4444;
+}
+html.dark{
+  --bg:#0F1011;
+  --surface:#191A1C;
+  --ink:#F4F5F7;
+  --muted:#8E8F94;
+  --border:#2A2B2E;
+}
+body{
+  font-family:'Outfit','Pretendard',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  word-break:keep-all;
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  font-feature-settings:"ss01","ss02";
+}
+.font-mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+*{transition-timing-function:var(--easing);}
+
+/* App Shell (Image 4 pattern: card-in-card) */
+.shell{
+  background:#fff;
+  border-radius:var(--radius-shell);
+  box-shadow:0 1px 2px rgba(26,26,26,0.04),0 8px 24px -12px rgba(26,26,26,0.08);
+  overflow:hidden;
+  display:flex;
+  min-height:calc(100dvh - 2rem);
+}
+.dark .shell{
+  background:var(--surface);
+  box-shadow:0 1px 2px rgba(0,0,0,0.4),0 8px 24px -12px rgba(0,0,0,0.6);
+}
+
+/* Card (Surface) */
+.card{
+  background:#fff;
+  border-radius:var(--radius-card);
+  box-shadow:0 1px 2px rgba(26,26,26,0.04),0 0 0 1px rgba(216,217,221,0.55);
+  padding:var(--pad-card);
+  transition:all var(--duration) var(--easing);
+}
+.dark .card{
+  background:#1F2023;
+  box-shadow:0 1px 2px rgba(0,0,0,0.3),0 0 0 1px var(--border);
+}
+.card:hover{transform:translateY(-1px) scale(var(--hover-scale));}
+.card-flat{
+  background:var(--surface);
+  border-radius:var(--radius-card);
+  padding:var(--pad-card);
+}
+.dark .card-flat{background:rgba(244,245,247,0.04);}
+
+/* Sidebar nav */
+.nav-item{
+  display:flex;align-items:center;gap:.75rem;
+  padding:.65rem .85rem;border-radius:9999px;
+  font-size:14px;font-weight:500;
+  color:var(--muted);
+  transition:all var(--duration) var(--easing);
+  cursor:pointer;
+}
+.nav-item:hover{background:var(--surface);color:var(--ink);}
+.dark .nav-item:hover{background:rgba(244,245,247,0.05);}
+.nav-item.active{
+  background:var(--surface);
+  color:var(--ink);
+  font-weight:700;
+  box-shadow:0 1px 2px rgba(26,26,26,0.06);
+}
+.dark .nav-item.active{background:rgba(244,245,247,0.08);box-shadow:none;}
+.nav-item iconify-icon{font-size:20px;}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  padding:.65rem 1.25rem;border-radius:9999px;
+  font-size:14px;font-weight:700;
+  transition:all var(--duration) var(--easing);
+  cursor:pointer;border:none;outline:none;
+  white-space:nowrap;
+}
+.btn-primary{background:var(--ink);color:#fff;}
+.dark .btn-primary{background:#fff;color:var(--ink);}
+.btn-primary:hover{transform:scale(var(--hover-scale));box-shadow:0 4px 14px rgba(26,26,26,0.18);}
+.btn-accent{background:var(--accent);color:#fff;}
+.btn-accent:hover{transform:scale(var(--hover-scale));box-shadow:0 4px 16px rgba(255,87,138,0.32);}
+.btn-secondary{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(26,26,26,0.05),inset 0 0 0 1px var(--border);}
+.dark .btn-secondary{background:#26272A;color:var(--ink);box-shadow:inset 0 0 0 1px var(--border);}
+.btn-secondary:hover{transform:scale(var(--hover-scale));}
+.btn-ghost{background:var(--surface);color:var(--ink);}
+.dark .btn-ghost{background:rgba(244,245,247,0.06);}
+.btn-ghost:hover{background:var(--border);}
+.dark .btn-ghost:hover{background:rgba(244,245,247,0.12);}
+.btn-icon{width:40px;height:40px;padding:0;border-radius:9999px;}
+.btn-icon-dark{background:#3F4045;color:#fff;}
+
+/* Input */
+.input{
+  background:var(--surface);
+  border:none;outline:none;
+  border-radius:9999px;
+  padding:.75rem 1.25rem;
+  font-size:14px;
+  color:var(--ink);
+  width:100%;
+  transition:all var(--duration) var(--easing);
+}
+.dark .input{background:rgba(244,245,247,0.05);}
+.input::placeholder{color:var(--muted);}
+.input:focus{box-shadow:0 0 0 2px var(--accent-soft);}
+
+/* Toggle */
+.toggle{
+  position:relative;width:44px;height:24px;
+  background:#fff;border:1px solid var(--border);
+  border-radius:9999px;cursor:pointer;
+  transition:all .25s var(--easing);
+  flex-shrink:0;
+}
+.dark .toggle{background:rgba(244,245,247,0.06);}
+.toggle::after{
+  content:"";position:absolute;top:2px;left:2px;
+  width:18px;height:18px;background:#fff;border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,0.18);
+  transition:all .25s var(--easing);
+}
+.toggle.on{background:var(--emc-green);border-color:var(--emc-green);}
+.toggle.on::after{transform:translateX(20px);}
+
+/* Status badge (Image 3 pattern) */
+.badge{
+  display:inline-flex;align-items:center;
+  padding:.22rem .7rem;border-radius:9999px;
+  font-size:12px;font-weight:700;
+}
+.badge-active{background:#D1F4E5;color:#0B7A55;}
+.badge-pending{background:#FEF3C7;color:#92651A;}
+.badge-error{background:#FEE2E2;color:#B91C1C;}
+.badge-archived{background:#fff;color:var(--muted);box-shadow:inset 0 0 0 1px var(--border);}
+.dark .badge-active{background:rgba(16,185,129,0.18);color:#34D399;}
+.dark .badge-pending{background:rgba(245,158,11,0.18);color:#FBBF24;}
+.dark .badge-error{background:rgba(239,68,68,0.18);color:#F87171;}
+.dark .badge-archived{background:rgba(244,245,247,0.05);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border);}
+
+/* Category chips (CE/CS/RE/RS) */
+.cat{display:inline-flex;align-items:center;padding:.22rem .6rem;border-radius:9999px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.02em;}
+.cat-ce{background:rgba(245,158,11,0.14);color:#8C5A0E;}
+.cat-cs{background:rgba(139,92,246,0.16);color:#5B21B6;}
+.cat-re{background:rgba(59,130,246,0.14);color:#1D4ED8;}
+.cat-rs{background:rgba(20,184,166,0.16);color:#0F766E;}
+.dark .cat-ce{background:rgba(245,158,11,0.18);color:#FBBF24;}
+.dark .cat-cs{background:rgba(139,92,246,0.20);color:#C4B5FD;}
+.dark .cat-re{background:rgba(59,130,246,0.18);color:#93C5FD;}
+.dark .cat-rs{background:rgba(20,184,166,0.20);color:#7DD3CB;}
+
+/* DataGrid */
+.grid-card{padding:0;overflow:hidden;}
+.grid-table{width:100%;border-collapse:collapse;font-size:14px;}
+.grid-table thead th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);background:var(--surface);padding:.7rem 1rem;border-bottom:1px solid var(--border);}
+.dark .grid-table thead th{background:rgba(244,245,247,0.03);}
+.grid-table tbody td{padding:.85rem 1rem;border-top:1px solid var(--border);vertical-align:middle;}
+.grid-row{transition:background .15s var(--easing);}
+.grid-row:hover{background:var(--surface);}
+.dark .grid-row:hover{background:rgba(244,245,247,0.03);}
+.grid-check{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
+.btn-row{width:32px;height:32px;border-radius:9999px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);transition:all .2s var(--easing);background:transparent;border:none;cursor:pointer;}
+.btn-row:hover{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(26,26,26,0.08);}
+.dark .btn-row:hover{background:rgba(244,245,247,0.08);color:var(--ink);}
+.btn-row.danger:hover{color:var(--emc-red);}
+.path-mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--muted);}
+
+/* Select */
+.select{
+  background:var(--surface);border:none;outline:none;
+  border-radius:9999px;padding:.65rem 2.5rem .65rem 1rem;
+  font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;
+  appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6D76' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;background-position:right 1rem center;
+  transition:all var(--duration) var(--easing);
+}
+.dark .select{background:rgba(244,245,247,0.05);}
+
+/* Modal */
+.modal-backdrop{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(26,23,20,0.45);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;padding:1.5rem;
+  opacity:0;pointer-events:none;
+  transition:opacity .3s var(--easing);
+}
+.modal-backdrop.open{opacity:1;pointer-events:auto;}
+.dark .modal-backdrop{background:rgba(0,0,0,0.65);}
+.modal-dialog{
+  background:#fff;border-radius:var(--radius);
+  width:min(640px,100%);max-height:90dvh;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,0.20);
+  display:flex;flex-direction:column;
+  transform:translateY(16px) scale(0.97);
+  transition:transform .35s var(--easing);
+}
+.dark .modal-dialog{background:#1F2023;}
+.modal-backdrop.open .modal-dialog{transform:translateY(0) scale(1);}
+.modal-header{padding:1.5rem 1.75rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-body{padding:1.5rem 1.75rem;overflow-y:auto;flex:1;}
+.modal-footer{padding:1.1rem 1.75rem;border-top:1px solid var(--border);background:var(--surface);display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;}
+.dark .modal-footer{background:rgba(244,245,247,0.02);}
+.modal-close{
+  width:36px;height:36px;border-radius:50%;border:none;background:transparent;
+  color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s var(--easing);
+}
+.modal-close:hover{background:var(--surface);color:var(--ink);}
+.dark .modal-close:hover{background:rgba(244,245,247,0.06);}
+
+/* Form */
+.field{margin-bottom:1.1rem;}
+.field-label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:.5rem;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1.1rem;}
+.field-row.three{grid-template-columns:1fr 1fr 1fr;}
+
+/* Segmented radio */
+.radio-group{display:flex;gap:.25rem;background:var(--surface);padding:.25rem;border-radius:9999px;}
+.dark .radio-group{background:rgba(244,245,247,0.05);}
+.radio-opt{flex:1;text-align:center;padding:.55rem 1rem;border-radius:9999px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s var(--easing);user-select:none;}
+.radio-opt:hover{color:var(--ink);}
+.radio-opt.active{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(26,26,26,0.08);}
+.dark .radio-opt.active{background:rgba(244,245,247,0.10);box-shadow:none;}
+
+/* Input with action */
+.input-with-action{display:flex;gap:.5rem;}
+.input-with-action .input{flex:1;}
+
+/* Health dot */
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:.4rem;vertical-align:middle;}
+.dot-on{background:var(--emc-green);box-shadow:0 0 0 3px rgba(16,185,129,0.18);}
+.dot-off{background:var(--muted);}
+.dot-err{background:var(--emc-red);box-shadow:0 0 0 3px rgba(239,68,68,0.18);}
+
+/* Slider */
+.slider{
+  appearance:none;width:100%;height:4px;
+  border-radius:9999px;background:var(--surface);outline:none;
+}
+.dark .slider{background:rgba(244,245,247,0.08);}
+.slider::-webkit-slider-thumb{
+  appearance:none;width:20px;height:20px;border-radius:50%;
+  background:var(--accent);cursor:pointer;
+  box-shadow:0 0 0 4px var(--accent-soft),0 2px 6px rgba(255,87,138,0.25);
+  transition:all .2s var(--easing);
+}
+.slider::-webkit-slider-thumb:hover{transform:scale(1.12);}
+
+/* Color swatch */
+.color-swatch{
+  width:36px;height:36px;border-radius:50%;cursor:pointer;
+  transition:all .2s var(--easing);border:none;
+}
+.color-swatch:hover{transform:scale(1.1);}
+
+/* View toggle */
+.view{display:none;animation:fadeIn .4s var(--easing) both;}
+.view.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* Numeric */
+.tnum{font-variant-numeric:tabular-nums;}
+.num-hero{letter-spacing:-0.04em;font-weight:800;}
+
+/* Settings tabs */
+.settings-tab{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.55rem .85rem;border-radius:9999px;
+  font-size:13px;font-weight:500;color:var(--muted);
+  cursor:pointer;transition:all var(--duration) var(--easing);
+}
+.settings-tab:hover{color:var(--ink);}
+.settings-tab.active{
+  background:var(--surface);color:var(--ink);font-weight:700;
+  box-shadow:0 1px 2px rgba(26,26,26,0.06);
+}
+.dark .settings-tab.active{background:rgba(244,245,247,0.08);box-shadow:none;}
+.settings-content{display:none;}
+.settings-content.active{display:block;animation:fadeIn .35s var(--easing) both;}
+
+/* Theme button */
+.theme-btn{
+  flex:1;padding:.6rem 1rem;border-radius:9999px;
+  font-size:13px;font-weight:500;color:var(--muted);
+  cursor:pointer;border:none;background:transparent;
+  transition:all var(--duration) var(--easing);
+}
+.theme-btn:hover{color:var(--ink);}
+.theme-btn.active{
+  background:#fff;color:var(--ink);font-weight:700;
+  box-shadow:0 1px 2px rgba(26,26,26,0.08);
+}
+.dark .theme-btn.active{background:rgba(244,245,247,0.10);}
+
+/* Density-driven section padding */
+.section-pad{padding:calc(2.5rem - (var(--density) * 0.12rem));}
+</style>
+</head>
+<body class="min-h-[100dvh] p-4 md:p-6">
+
+<!-- ============ ACCESS GATE ============ -->
+<div id="gate" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#EBECEE;font-family:'Outfit','Pretendard',-apple-system,BlinkMacSystemFont,sans-serif;">
+  <div style="max-width:380px;width:calc(100% - 2rem);padding:2.5rem 2rem;background:#fff;border-radius:1.5rem;box-shadow:0 12px 40px rgba(0,0,0,0.10);text-align:center;">
+    <div style="width:52px;height:52px;border-radius:1rem;background:rgba(255,87,138,0.10);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.25rem;">
+      <iconify-icon icon="solar:lock-keyhole-minimalistic-bold" style="color:#FF578A;font-size:26px;"></iconify-icon>
+    </div>
+    <div style="font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;margin-bottom:.35rem;color:#1A1A1A;">EMC Monitor</div>
+    <div style="font-size:.7rem;font-weight:700;color:#6B6D76;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:1.75rem;">Preview · 접근 인증</div>
+    <input id="gate-pw" type="password" placeholder="비밀번호" autofocus style="width:100%;padding:.85rem 1.25rem;border-radius:9999px;border:none;background:#F4F5F7;outline:none;font-size:.875rem;font-weight:500;color:#1A1A1A;margin-bottom:.6rem;font-family:inherit;-webkit-appearance:none;">
+    <button id="gate-btn" style="width:100%;padding:.85rem 1.25rem;border-radius:9999px;background:#1A1A1A;color:#fff;font-weight:700;font-size:.875rem;border:none;cursor:pointer;font-family:inherit;letter-spacing:-0.005em;">진입</button>
+    <div id="gate-err" style="color:#EF4444;font-size:.75rem;font-weight:600;margin-top:.85rem;display:none;">비밀번호가 올바르지 않습니다.</div>
+  </div>
+</div>
+<script>
+(function(){
+  const HASH = "e86a1652f8df36d5d1bd44ce6b71ddb00b5527dd9e9b52c6221a0bf5c6cf9897";
+  async function sha256(s){
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  if(sessionStorage.getItem('emc-gate')==='ok'){
+    document.getElementById('gate').remove();
+    return;
+  }
+  async function tryEnter(){
+    const pw = document.getElementById('gate-pw').value;
+    if(await sha256(pw)===HASH){
+      sessionStorage.setItem('emc-gate','ok');
+      document.getElementById('gate').remove();
+    } else {
+      const e = document.getElementById('gate-err');
+      e.style.display='block';
+      const inp = document.getElementById('gate-pw');
+      inp.value=''; inp.focus();
+    }
+  }
+  document.getElementById('gate-btn').addEventListener('click', tryEnter);
+  document.getElementById('gate-pw').addEventListener('keydown', e=>{
+    if(e.key==='Enter') tryEnter();
+  });
+})();
+</script>
+
+<div class="shell">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="w-60 shrink-0 p-4 flex flex-col border-r" style="border-color:var(--border);">
+    <div class="px-2 py-2 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-2xl flex items-center justify-center" style="background:var(--accent-soft);">
+        <iconify-icon icon="solar:soundwave-bold" style="color:var(--accent);" class="text-xl"></iconify-icon>
+      </div>
+      <div class="leading-tight">
+        <div class="text-[15px] font-extrabold tracking-tight">EMC Monitor</div>
+        <div class="text-[11px] font-bold" style="color:var(--muted);">시험 데이터 분석</div>
+      </div>
+    </div>
+
+    <nav class="flex flex-col gap-1 mt-6" id="nav">
+      <a data-route="home" href="#home" class="nav-item">
+        <iconify-icon icon="solar:home-2-linear"></iconify-icon><span>홈</span>
+      </a>
+      <a data-route="eut" href="#eut" class="nav-item">
+        <iconify-icon icon="solar:box-linear"></iconify-icon><span>EUT 정보</span>
+      </a>
+      <a data-route="equipment" href="#equipment" class="nav-item">
+        <iconify-icon icon="solar:settings-linear"></iconify-icon><span>시험 장비</span>
+      </a>
+      <a data-route="import" href="#import" class="nav-item">
+        <iconify-icon icon="solar:download-square-linear"></iconify-icon><span>가져오기</span>
+      </a>
+      <a data-route="report" href="#report" class="nav-item">
+        <iconify-icon icon="solar:document-text-linear"></iconify-icon><span>보고서</span>
+      </a>
+      <a data-route="library" href="#library" class="nav-item">
+        <iconify-icon icon="solar:book-2-linear"></iconify-icon><span>라이브러리</span>
+      </a>
+      <div class="h-px my-3 mx-3" style="background:var(--border);"></div>
+      <a data-route="settings" href="#settings" class="nav-item">
+        <iconify-icon icon="solar:settings-minimalistic-linear"></iconify-icon><span>설정</span>
+      </a>
+      <a data-route="help" href="#help" class="nav-item">
+        <iconify-icon icon="solar:info-circle-linear"></iconify-icon><span>도움말</span>
+      </a>
+    </nav>
+
+    <div class="mt-auto pt-4">
+      <button id="theme-toggle" class="btn btn-ghost w-full text-xs">
+        <iconify-icon icon="solar:moon-linear" id="theme-icon"></iconify-icon>
+        <span id="theme-label">다크</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="flex-1 overflow-x-hidden" style="background:var(--bg);">
+
+    <!-- HOME -->
+    <section id="view-home" class="view section-pad">
+      <header class="flex items-end justify-between mb-8">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight">오늘의 시험 현황</h1>
+          <p class="text-sm font-medium mt-2" style="color:var(--muted);">진행 중인 EUT와 임박한 장비 교정, 최근 가져온 시험 데이터를 한 화면에 모았습니다.</p>
+        </div>
+        <button class="btn btn-accent">
+          <iconify-icon icon="solar:add-circle-linear"></iconify-icon>새 EUT 등록
+        </button>
+      </header>
+
+      <!-- KPI -->
+      <div class="grid grid-cols-1 md:grid-cols-3 mb-6" style="gap:var(--gap-grid)">
+        <div class="card">
+          <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">진행 중인 EUT</div>
+          <div class="text-6xl num-hero tnum">14</div>
+          <div class="text-sm font-bold mt-3" style="color:var(--emc-green);">↑ 지난주 대비 +3</div>
+        </div>
+        <div class="card">
+          <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">교정 임박</div>
+          <div class="text-6xl num-hero tnum" style="color:var(--emc-red);">2</div>
+          <div class="text-sm font-bold mt-3" style="color:var(--muted);">7일 이내 만료</div>
+        </div>
+        <div class="card">
+          <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">7일 임포트</div>
+          <div class="text-6xl num-hero tnum">47</div>
+          <div class="text-sm font-bold mt-3" style="color:var(--muted);">건 수신</div>
+        </div>
+      </div>
+
+      <!-- 본문 그리드 -->
+      <div class="grid grid-cols-1 lg:grid-cols-3" style="gap:var(--gap-grid)">
+        <div class="card lg:col-span-2">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-bold tracking-tight">최근 EUT</h2>
+            <a href="#eut" class="text-sm font-bold" style="color:var(--accent);">전체 보기 →</a>
+          </div>
+          <div class="divide-y" style="--tw-divide-opacity:1;">
+            <div class="flex items-center justify-between py-3" style="border-color:var(--border);border-top:1px solid var(--border);">
+              <div>
+                <div class="text-sm font-bold">통신 모듈 RX-217</div>
+                <div class="text-xs font-medium mt-1" style="color:var(--muted);">스텔라랩스 · Navy · Ship Above Deck</div>
+              </div>
+              <span class="badge badge-pending">Pending</span>
+            </div>
+            <div class="flex items-center justify-between py-3" style="border-color:var(--border);border-top:1px solid var(--border);">
+              <div>
+                <div class="text-sm font-bold">전원 컨트롤러 PCU-08B</div>
+                <div class="text-xs font-medium mt-1" style="color:var(--muted);">베리파이 · Air Force · Aircraft Internal</div>
+              </div>
+              <span class="badge badge-active">Active</span>
+            </div>
+            <div class="flex items-center justify-between py-3" style="border-color:var(--border);border-top:1px solid var(--border);">
+              <div>
+                <div class="text-sm font-bold">레이더 인터페이스 RI-3</div>
+                <div class="text-xs font-medium mt-1" style="color:var(--muted);">루미너스 · Army · Ground</div>
+              </div>
+              <span class="badge badge-error">Fail −2.3 dB</span>
+            </div>
+            <div class="flex items-center justify-between py-3" style="border-color:var(--border);border-top:1px solid var(--border);">
+              <div>
+                <div class="text-sm font-bold">광 송신기 OT-91</div>
+                <div class="text-xs font-medium mt-1" style="color:var(--muted);">플로우캔버스 · Navy · Submarine</div>
+              </div>
+              <span class="badge badge-archived">Archived</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-bold tracking-tight">교정 임박</h2>
+            <iconify-icon icon="solar:bell-bing-bold" style="color:var(--emc-red);" class="text-xl"></iconify-icon>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-bold">스펙트럼 분석기 N9020A</div>
+                <span class="text-xs font-bold tnum" style="color:var(--emc-red);">D−3</span>
+              </div>
+              <div class="text-xs font-medium mt-1" style="color:var(--muted);">2026-06-04 만료</div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-bold">바이코니컬 안테나 BC-310</div>
+                <span class="text-xs font-bold tnum" style="color:var(--emc-amber);">D−6</span>
+              </div>
+              <div class="text-xs font-medium mt-1" style="color:var(--muted);">2026-06-07 만료</div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between">
+                <div class="text-sm font-bold">LISN AMN-50</div>
+                <span class="text-xs font-bold tnum" style="color:var(--muted);">D−28</span>
+              </div>
+              <div class="text-xs font-medium mt-1" style="color:var(--muted);">2026-06-29 만료</div>
+            </div>
+            <a href="#equipment" class="btn btn-primary w-full mt-4">장비 관리로 이동</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EUT -->
+    <section id="view-eut" class="view section-pad">
+      <header class="flex items-end justify-between mb-8">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight">EUT 정보</h1>
+          <p class="text-sm font-medium mt-2" style="color:var(--muted);">시험 대상 장비를 등록하고 적용 규격·시험 항목을 관리합니다.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary">
+            <iconify-icon icon="solar:refresh-linear"></iconify-icon>새로 고침
+          </button>
+          <button class="btn btn-accent">
+            <iconify-icon icon="solar:add-circle-bold"></iconify-icon>New EUT
+          </button>
+        </div>
+      </header>
+      <div class="card">
+        <div class="text-center py-16" style="color:var(--muted);">
+          <iconify-icon icon="solar:box-minimalistic-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+          <div class="text-sm font-bold">EUT 목록 테이블 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EQUIPMENT -->
+    <section id="view-equipment" class="view section-pad">
+      <header class="flex items-end justify-between mb-8">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight">시험 장비</h1>
+          <p class="text-sm font-medium mt-2" style="color:var(--muted);">측정 장비의 사양·교정 만료일·상태를 추적합니다.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary">
+            <iconify-icon icon="solar:filter-linear"></iconify-icon>교정 임박만
+          </button>
+          <button class="btn btn-accent">
+            <iconify-icon icon="solar:add-circle-bold"></iconify-icon>New Equipment
+          </button>
+        </div>
+      </header>
+      <div class="card">
+        <div class="text-center py-16" style="color:var(--muted);">
+          <iconify-icon icon="solar:settings-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+          <div class="text-sm font-bold">장비 목록 테이블 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- IMPORT -->
+    <section id="view-import" class="view section-pad">
+      <header class="mb-8">
+        <h1 class="text-3xl font-extrabold tracking-tight">가져오기</h1>
+        <p class="text-sm font-medium mt-2" style="color:var(--muted);">외부 측정 프로그램이 생성한 폴더를 시험 항목과 매핑합니다.</p>
+      </header>
+      <div class="card">
+        <div class="text-center py-16" style="color:var(--muted);">
+          <iconify-icon icon="solar:download-square-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+          <div class="text-sm font-bold">임포트 워크플로우 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section id="view-report" class="view section-pad">
+      <header class="mb-8">
+        <h1 class="text-3xl font-extrabold tracking-tight">보고서</h1>
+        <p class="text-sm font-medium mt-2" style="color:var(--muted);">측정 데이터 기반 시험 보고서를 생성하고 이력을 조회합니다.</p>
+      </header>
+      <div class="card">
+        <div class="text-center py-16" style="color:var(--muted);">
+          <iconify-icon icon="solar:document-text-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+          <div class="text-sm font-bold">보고서 생성 / 실적 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="view-library" class="view section-pad">
+      <header class="mb-8">
+        <h1 class="text-3xl font-extrabold tracking-tight">라이브러리</h1>
+        <p class="text-sm font-medium mt-2" style="color:var(--muted);">MIL-STD-461G 등 규격 기반 Limit 데이터를 관리합니다.</p>
+      </header>
+      <div class="card">
+        <div class="text-center py-16" style="color:var(--muted);">
+          <iconify-icon icon="solar:book-2-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+          <div class="text-sm font-bold">리미트 라이브러리 그리드 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view">
+      <div class="flex">
+        <aside class="w-56 shrink-0 p-6 border-r" style="border-color:var(--border);">
+          <div class="text-xs font-bold uppercase tracking-wider mb-4" style="color:var(--muted);">설정</div>
+          <nav class="flex flex-col gap-1" id="settings-nav">
+            <a data-tab="folder" class="settings-tab">
+              <iconify-icon icon="solar:folder-linear"></iconify-icon>시험 폴더
+            </a>
+            <a data-tab="design" class="settings-tab">
+              <iconify-icon icon="solar:palette-linear"></iconify-icon>디자인 시스템
+            </a>
+            <div class="h-px my-3 mx-3" style="background:var(--border);"></div>
+            <div class="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">연동</div>
+            <a data-tab="db" class="settings-tab">
+              <iconify-icon icon="solar:database-linear"></iconify-icon>데이터베이스
+            </a>
+            <a data-tab="remote" class="settings-tab">
+              <iconify-icon icon="solar:server-square-linear"></iconify-icon>원격 시험데이터
+            </a>
+            <a data-tab="cctv" class="settings-tab">
+              <iconify-icon icon="solar:videocamera-record-linear"></iconify-icon>CCTV
+            </a>
+            <a data-tab="ai" class="settings-tab">
+              <iconify-icon icon="solar:cpu-bolt-linear"></iconify-icon>AI (Ollama)
+            </a>
+          </nav>
+        </aside>
+
+        <div class="flex-1 section-pad">
+
+          <!-- DESIGN -->
+          <div data-content="design" class="settings-content">
+            <header class="flex items-end justify-between mb-8">
+              <div>
+                <h1 class="text-3xl font-extrabold tracking-tight">디자인 시스템</h1>
+                <p class="text-sm font-medium mt-2" style="color:var(--muted);">3축 변수와 컬러·타이포를 한 곳에서 조정하고 즉시 결과를 확인합니다.</p>
+              </div>
+              <div class="flex gap-2">
+                <button id="reset-design" class="btn btn-ghost">
+                  <iconify-icon icon="solar:refresh-linear"></iconify-icon>기본값
+                </button>
+                <button class="btn btn-primary">
+                  <iconify-icon icon="solar:check-read-linear"></iconify-icon>저장
+                </button>
+              </div>
+            </header>
+
+            <div class="grid grid-cols-1 xl:grid-cols-2" style="gap:var(--gap-grid)">
+
+              <!-- Controls -->
+              <div class="card space-y-7">
+                <div>
+                  <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">테마</div>
+                  <div class="flex gap-1 p-1 rounded-full" style="background:var(--surface);">
+                    <button data-theme="light" class="theme-btn">Light</button>
+                    <button data-theme="dark" class="theme-btn">Dark</button>
+                    <button data-theme="system" class="theme-btn">System</button>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="text-xs font-bold uppercase tracking-wider" style="color:var(--muted);">DESIGN_VARIANCE</div>
+                    <div class="text-sm font-extrabold tnum"><span id="v-variance">4</span><span class="text-xs font-bold" style="color:var(--muted);">/10</span></div>
+                  </div>
+                  <input id="s-variance" type="range" min="1" max="10" value="4" class="slider">
+                  <div class="flex justify-between text-[10px] font-bold mt-2 uppercase tracking-wider" style="color:var(--muted);"><span>대칭</span><span>비대칭</span></div>
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="text-xs font-bold uppercase tracking-wider" style="color:var(--muted);">MOTION_INTENSITY</div>
+                    <div class="text-sm font-extrabold tnum"><span id="v-motion">4</span><span class="text-xs font-bold" style="color:var(--muted);">/10</span></div>
+                  </div>
+                  <input id="s-motion" type="range" min="1" max="10" value="4" class="slider">
+                  <div class="flex justify-between text-[10px] font-bold mt-2 uppercase tracking-wider" style="color:var(--muted);"><span>호버</span><span>스프링</span></div>
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="text-xs font-bold uppercase tracking-wider" style="color:var(--muted);">VISUAL_DENSITY</div>
+                    <div class="text-sm font-extrabold tnum"><span id="v-density">5</span><span class="text-xs font-bold" style="color:var(--muted);">/10</span></div>
+                  </div>
+                  <input id="s-density" type="range" min="1" max="10" value="5" class="slider">
+                  <div class="flex justify-between text-[10px] font-bold mt-2 uppercase tracking-wider" style="color:var(--muted);"><span>여백</span><span>밀집</span></div>
+                </div>
+
+                <div>
+                  <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">Accent</div>
+                  <div class="flex gap-3 items-center">
+                    <button data-color="#FF578A" class="color-swatch" style="background:#FF578A;box-shadow:0 0 0 2px #fff,0 0 0 4px #FF578A;" title="EMC Pink"></button>
+                    <button data-color="#10B981" class="color-swatch" style="background:#10B981;" title="Green"></button>
+                    <button data-color="#F59E0B" class="color-swatch" style="background:#F59E0B;" title="Amber"></button>
+                    <button data-color="#3F4045" class="color-swatch" style="background:#3F4045;" title="Slate"></button>
+                  </div>
+                </div>
+
+                <div class="pt-2 border-t" style="border-color:var(--border);">
+                  <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">실시간 토글</div>
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <div class="text-sm font-bold">Auto-Save Preview</div>
+                      <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <div class="text-sm font-bold">Compact Sidebar</div>
+                      <div class="toggle" onclick="this.classList.toggle('on')"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Preview -->
+              <div class="card">
+                <div class="text-xs font-bold uppercase tracking-wider mb-5" style="color:var(--muted);">실시간 미리보기</div>
+
+                <!-- Mini KPI -->
+                <div class="grid grid-cols-3 gap-3 mb-5">
+                  <div class="card-flat">
+                    <div class="text-[10px] font-bold uppercase" style="color:var(--muted);">진행</div>
+                    <div class="text-3xl num-hero tnum mt-1">14</div>
+                  </div>
+                  <div class="card-flat">
+                    <div class="text-[10px] font-bold uppercase" style="color:var(--muted);">임박</div>
+                    <div class="text-3xl num-hero tnum mt-1" style="color:var(--emc-red);">2</div>
+                  </div>
+                  <div class="card-flat">
+                    <div class="text-[10px] font-bold uppercase" style="color:var(--muted);">임포트</div>
+                    <div class="text-3xl num-hero tnum mt-1">47</div>
+                  </div>
+                </div>
+
+                <!-- Sample row -->
+                <div class="card-flat mb-5">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl flex items-center justify-center" style="background:var(--accent-soft);">
+                      <iconify-icon icon="solar:soundwave-bold" style="color:var(--accent);"></iconify-icon>
+                    </div>
+                    <div class="flex-1">
+                      <div class="text-sm font-bold">통신 모듈 RX-217</div>
+                      <div class="text-xs font-medium" style="color:var(--muted);">Navy · Ship Above Deck</div>
+                    </div>
+                    <span class="badge badge-active">Active</span>
+                  </div>
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex flex-wrap gap-2 mb-5">
+                  <button class="btn btn-primary">Save Changes</button>
+                  <button class="btn btn-accent">
+                    <iconify-icon icon="solar:add-circle-bold"></iconify-icon>New Project
+                  </button>
+                  <button class="btn btn-secondary">Refresh</button>
+                  <button class="btn btn-ghost">Cancel</button>
+                </div>
+
+                <!-- Input -->
+                <input type="text" placeholder="Enter camera name..." class="input mb-5">
+
+                <!-- Status badges -->
+                <div class="flex gap-2 mb-5">
+                  <span class="badge badge-active">Active</span>
+                  <span class="badge badge-pending">Pending</span>
+                  <span class="badge badge-error">Error</span>
+                  <span class="badge badge-archived">Archived</span>
+                </div>
+
+                <!-- Typography sample -->
+                <div class="space-y-1 mb-5">
+                  <div class="text-3xl font-extrabold tracking-tight">시험 데이터를</div>
+                  <div class="text-3xl font-extrabold tracking-tight">한 곳에서 분석합니다.</div>
+                  <div class="text-sm font-medium mt-2" style="color:var(--muted);">EUT부터 보고서까지, 흩어진 측정 결과를 일관된 워크플로우로 묶습니다.</div>
+                </div>
+
+                <!-- Palette -->
+                <div class="grid grid-cols-5 gap-2">
+                  <div><div class="h-12 rounded-xl" style="background:var(--accent);"></div><div class="text-[9px] font-bold uppercase tracking-wider mt-1.5" style="color:var(--muted);">Accent</div></div>
+                  <div><div class="h-12 rounded-xl" style="background:var(--emc-green);"></div><div class="text-[9px] font-bold uppercase tracking-wider mt-1.5" style="color:var(--muted);">Green</div></div>
+                  <div><div class="h-12 rounded-xl" style="background:var(--emc-amber);"></div><div class="text-[9px] font-bold uppercase tracking-wider mt-1.5" style="color:var(--muted);">Amber</div></div>
+                  <div><div class="h-12 rounded-xl" style="background:var(--emc-red);"></div><div class="text-[9px] font-bold uppercase tracking-wider mt-1.5" style="color:var(--muted);">Red</div></div>
+                  <div><div class="h-12 rounded-xl" style="background:var(--muted);"></div><div class="text-[9px] font-bold uppercase tracking-wider mt-1.5" style="color:var(--muted);">Muted</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FOLDER -->
+          <div data-content="folder" class="settings-content">
+            <header class="flex flex-wrap items-end justify-between gap-4 mb-8">
+              <div>
+                <h1 class="text-3xl font-extrabold tracking-tight">시험 폴더</h1>
+                <p class="text-sm font-medium mt-2" style="color:var(--muted);">시험장소별 EMC Root 경로를 지정하면 하위 폴더가 시험 결과 폴더로 인식됩니다.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2">
+                  <label class="text-xs font-bold uppercase tracking-wider whitespace-nowrap" style="color:var(--muted);">시험장소</label>
+                  <select class="select" id="location-select">
+                    <option>메인챔버</option>
+                    <option>디버깅룸</option>
+                    <option>야외 시험장</option>
+                    <option>차폐룸 B</option>
+                  </select>
+                </div>
+                <button class="btn btn-secondary">
+                  <iconify-icon icon="solar:add-circle-linear"></iconify-icon>장소 추가
+                </button>
+              </div>
+            </header>
+
+            <!-- Root 경로 카드 -->
+            <div class="card mb-5">
+              <div class="flex items-end gap-3 flex-wrap">
+                <div class="flex-1 min-w-[300px]">
+                  <div class="text-xs font-bold uppercase tracking-wider mb-3" style="color:var(--muted);">EMC Root 경로 · <span style="color:var(--ink);">메인챔버</span></div>
+                  <div class="flex gap-2">
+                    <input class="input" placeholder="EMC Root 경로 입력" value="D:\EMC\Results\MainChamber">
+                    <button class="btn btn-secondary whitespace-nowrap">
+                      <iconify-icon icon="solar:folder-linear"></iconify-icon>폴더 선택
+                    </button>
+                  </div>
+                </div>
+                <button class="btn btn-accent whitespace-nowrap">
+                  <iconify-icon icon="solar:refresh-linear"></iconify-icon>저장 후 스캔
+                </button>
+              </div>
+              <div class="flex items-center gap-8 mt-5 pt-5 border-t" style="border-color:var(--border);">
+                <div>
+                  <div class="text-xs font-bold uppercase tracking-wider" style="color:var(--muted);">인식된 폴더</div>
+                  <div class="text-2xl num-hero tnum mt-1">7</div>
+                </div>
+                <div>
+                  <div class="text-xs font-bold uppercase tracking-wider" style="color:var(--muted);">마지막 스캔</div>
+                  <div class="text-sm font-bold mt-1">2026-06-02 09:14</div>
+                </div>
+                <div>
+                  <div class="text-xs font-bold uppercase tracking-wider" style="color:var(--muted);">상태</div>
+                  <div class="mt-1.5"><span class="badge badge-active">Active</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- DataGrid 카드 -->
+            <div class="card grid-card">
+              <div class="flex items-center justify-between p-5 border-b" style="border-color:var(--border);">
+                <div>
+                  <h2 class="text-xl font-bold tracking-tight">인식된 시험 결과 폴더</h2>
+                  <div class="text-xs font-medium mt-1" style="color:var(--muted);">메인챔버 하위 · 자동 분류 7건</div>
+                </div>
+                <div class="flex gap-2">
+                  <button class="btn btn-ghost">
+                    <iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon>선택 삭제
+                  </button>
+                  <button class="btn btn-secondary">
+                    <iconify-icon icon="solar:pen-2-linear"></iconify-icon>일괄 수정
+                  </button>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="grid-table">
+                  <thead>
+                    <tr>
+                      <th class="w-10"><input type="checkbox" class="grid-check" id="check-all"></th>
+                      <th class="w-12">#</th>
+                      <th>Requirement</th>
+                      <th class="w-24">Category</th>
+                      <th>폴더 경로</th>
+                      <th class="w-32">시험장소</th>
+                      <th class="w-24 text-right">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">1</td>
+                      <td><div class="font-bold">MIL-STD-461G CE101</div><div class="text-xs font-medium" style="color:var(--muted);">30 Hz – 10 kHz · Power Leads</div></td>
+                      <td><span class="cat cat-ce">CE</span></td>
+                      <td class="path-mono">\CE101</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">2</td>
+                      <td><div class="font-bold">MIL-STD-461G CE102</div><div class="text-xs font-medium" style="color:var(--muted);">10 kHz – 10 MHz · Power Leads</div></td>
+                      <td><span class="cat cat-ce">CE</span></td>
+                      <td class="path-mono">\CE102</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">3</td>
+                      <td><div class="font-bold">MIL-STD-461G CS101</div><div class="text-xs font-medium" style="color:var(--muted);">30 Hz – 150 kHz · Power Leads</div></td>
+                      <td><span class="cat cat-cs">CS</span></td>
+                      <td class="path-mono">\CS101</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">4</td>
+                      <td><div class="font-bold">MIL-STD-461G CS114</div><div class="text-xs font-medium" style="color:var(--muted);">10 kHz – 200 MHz · Bulk Cable Injection</div></td>
+                      <td><span class="cat cat-cs">CS</span></td>
+                      <td class="path-mono">\CS114</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">5</td>
+                      <td><div class="font-bold">MIL-STD-461G RE101</div><div class="text-xs font-medium" style="color:var(--muted);">30 Hz – 100 kHz · Magnetic Field</div></td>
+                      <td><span class="cat cat-re">RE</span></td>
+                      <td class="path-mono">\RE101</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">6</td>
+                      <td><div class="font-bold">MIL-STD-461G RE102</div><div class="text-xs font-medium" style="color:var(--muted);">10 kHz – 18 GHz · Electric Field</div></td>
+                      <td><span class="cat cat-re">RE</span></td>
+                      <td class="path-mono">\RE102</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">7</td>
+                      <td><div class="font-bold">MIL-STD-461G RS103</div><div class="text-xs font-medium" style="color:var(--muted);">2 MHz – 40 GHz · Electric Field</div></td>
+                      <td><span class="cat cat-rs">RS</span></td>
+                      <td class="path-mono">\RS103</td>
+                      <td class="font-medium text-sm">메인챔버</td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- placeholder tabs -->
+          <div data-content="db" class="settings-content">
+            <header class="mb-8"><h1 class="text-3xl font-extrabold tracking-tight">데이터베이스</h1><p class="text-sm font-medium mt-2" style="color:var(--muted);">PostgreSQL 연결 정보. 스키마는 공유 자산이므로 변경하지 않습니다.</p></header>
+            <div class="card"><div class="py-16 text-center" style="color:var(--muted);"><iconify-icon icon="solar:database-linear" class="text-5xl block mx-auto mb-3"></iconify-icon><div class="text-sm font-bold">연결 폼 (세부 페이지 추후)</div></div></div>
+          </div>
+          <div data-content="remote" class="settings-content">
+            <header class="mb-8"><h1 class="text-3xl font-extrabold tracking-tight">원격 시험데이터</h1><p class="text-sm font-medium mt-2" style="color:var(--muted);">UNC 경로 기반 원격 폴더를 로컬에 미러링합니다.</p></header>
+            <div class="card"><div class="py-16 text-center" style="color:var(--muted);"><iconify-icon icon="solar:server-square-linear" class="text-5xl block mx-auto mb-3"></iconify-icon><div class="text-sm font-bold">매핑 테이블 (세부 페이지 추후)</div></div></div>
+          </div>
+          <div data-content="cctv" class="settings-content">
+            <header class="flex flex-wrap items-end justify-between gap-4 mb-8">
+              <div>
+                <h1 class="text-3xl font-extrabold tracking-tight">CCTV</h1>
+                <p class="text-sm font-medium mt-2" style="color:var(--muted);">시험실 카메라를 등록하고 RTSP/HTTP 캡처 설정을 관리합니다.</p>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn btn-secondary">
+                  <iconify-icon icon="solar:plug-circle-linear"></iconify-icon>일괄 연결 테스트
+                </button>
+                <button class="btn btn-accent" onclick="openCameraModal()">
+                  <iconify-icon icon="solar:add-circle-bold"></iconify-icon>카메라 추가
+                </button>
+              </div>
+            </header>
+
+            <!-- KPI -->
+            <div class="grid grid-cols-1 md:grid-cols-4 mb-5" style="gap:var(--gap-grid)">
+              <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">전체</div><div class="text-3xl num-hero tnum mt-1">4</div></div>
+              <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">활성</div><div class="text-3xl num-hero tnum mt-1" style="color:var(--emc-green);">3</div></div>
+              <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">오프라인</div><div class="text-3xl num-hero tnum mt-1" style="color:var(--emc-red);">1</div></div>
+              <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">평균 응답</div><div class="text-3xl num-hero tnum mt-1">187<span class="text-sm font-bold" style="color:var(--muted);"> ms</span></div></div>
+            </div>
+
+            <!-- DataGrid -->
+            <div class="card grid-card">
+              <div class="flex items-center justify-between p-5 border-b" style="border-color:var(--border);">
+                <div>
+                  <h2 class="text-xl font-bold tracking-tight">등록된 카메라</h2>
+                  <div class="text-xs font-medium mt-1" style="color:var(--muted);">총 4대 · 마지막 점검 2026-06-02 12:08</div>
+                </div>
+                <div class="flex gap-2">
+                  <button class="btn btn-ghost">
+                    <iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon>선택 삭제
+                  </button>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="grid-table">
+                  <thead>
+                    <tr>
+                      <th class="w-10"><input type="checkbox" class="grid-check" id="cctv-check-all"></th>
+                      <th class="w-12">#</th>
+                      <th>카메라 이름</th>
+                      <th class="w-20">활성</th>
+                      <th>IP : 포트</th>
+                      <th class="w-16">채널</th>
+                      <th class="w-32">캡쳐 방식</th>
+                      <th class="w-28">연결</th>
+                      <th class="w-24 text-right">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">1</td>
+                      <td><div class="font-bold">메인챔버 정면</div><div class="text-xs font-medium" style="color:var(--muted);">Main Stream · admin</div></td>
+                      <td><div class="toggle on"></div></td>
+                      <td class="path-mono">192.168.1.10:554</td>
+                      <td class="font-bold tnum">1</td>
+                      <td><span class="cat cat-re">RTSP</span></td>
+                      <td><span class="dot dot-on"></span><span class="text-xs font-bold" style="color:var(--emc-green);">142ms</span></td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정" onclick="openCameraModal()"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">2</td>
+                      <td><div class="font-bold">메인챔버 천장</div><div class="text-xs font-medium" style="color:var(--muted);">Main Stream · admin</div></td>
+                      <td><div class="toggle on"></div></td>
+                      <td class="path-mono">192.168.1.11:554</td>
+                      <td class="font-bold tnum">1</td>
+                      <td><span class="cat cat-re">RTSP</span></td>
+                      <td><span class="dot dot-on"></span><span class="text-xs font-bold" style="color:var(--emc-green);">156ms</span></td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정" onclick="openCameraModal()"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">3</td>
+                      <td><div class="font-bold">디버깅룸 모니터</div><div class="text-xs font-medium" style="color:var(--muted);">Sub Stream · viewer</div></td>
+                      <td><div class="toggle on"></div></td>
+                      <td class="path-mono">192.168.1.20:80</td>
+                      <td class="font-bold tnum">1</td>
+                      <td><span class="cat cat-ce">HTTP</span></td>
+                      <td><span class="dot dot-on"></span><span class="text-xs font-bold" style="color:var(--emc-green);">263ms</span></td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정" onclick="openCameraModal()"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                    <tr class="grid-row">
+                      <td><input type="checkbox" class="grid-check"></td>
+                      <td class="font-bold tnum" style="color:var(--muted);">4</td>
+                      <td><div class="font-bold">차폐룸 B</div><div class="text-xs font-medium" style="color:var(--muted);">Main Stream · admin</div></td>
+                      <td><div class="toggle"></div></td>
+                      <td class="path-mono">192.168.1.30:554</td>
+                      <td class="font-bold tnum">1</td>
+                      <td><span class="cat cat-re">RTSP</span></td>
+                      <td><span class="dot dot-err"></span><span class="text-xs font-bold" style="color:var(--emc-red);">Offline</span></td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn-row" title="수정" onclick="openCameraModal()"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                        <button class="btn-row danger" title="삭제"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div data-content="ai" class="settings-content">
+            <header class="mb-8"><h1 class="text-3xl font-extrabold tracking-tight">AI (Ollama)</h1><p class="text-sm font-medium mt-2" style="color:var(--muted);">로컬 Ollama 서버 연결 및 모델 선택.</p></header>
+            <div class="card"><div class="py-16 text-center" style="color:var(--muted);"><iconify-icon icon="solar:cpu-bolt-linear" class="text-5xl block mx-auto mb-3"></iconify-icon><div class="text-sm font-bold">서버/모델 폼 (세부 페이지 추후)</div></div></div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- HELP -->
+    <section id="view-help" class="view section-pad">
+      <header class="mb-8">
+        <h1 class="text-3xl font-extrabold tracking-tight">도움말</h1>
+        <p class="text-sm font-medium mt-2" style="color:var(--muted);">사용자 매뉴얼·기능 소개서 생성과 버전 정보.</p>
+      </header>
+      <div class="card">
+        <div class="text-center py-16" style="color:var(--muted);">
+          <iconify-icon icon="solar:info-circle-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+          <div class="text-sm font-bold">매뉴얼 생성 / 정보 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ CAMERA MODAL ============ -->
+<div id="cam-modal" class="modal-backdrop">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div>
+        <div class="text-lg font-extrabold tracking-tight">카메라 등록</div>
+        <div class="text-xs font-medium mt-1" style="color:var(--muted);">시험실 CCTV 정보 및 캡처 설정</div>
+      </div>
+      <button class="modal-close" onclick="closeCameraModal()">
+        <iconify-icon icon="solar:close-circle-linear" class="text-xl"></iconify-icon>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <!-- 이름 + 활성화 -->
+      <div class="field">
+        <div class="flex items-end gap-4">
+          <div class="flex-1">
+            <label class="field-label">카메라 이름</label>
+            <input class="input" placeholder="메인챔버 정면">
+          </div>
+          <div>
+            <label class="field-label">활성화</label>
+            <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IP + 포트 -->
+      <div class="field-row">
+        <div>
+          <label class="field-label">IP 주소</label>
+          <input class="input" placeholder="192.168.1.10">
+        </div>
+        <div>
+          <label class="field-label">RTSP 포트</label>
+          <input class="input" type="number" value="554">
+        </div>
+      </div>
+
+      <!-- ID + PW -->
+      <div class="field-row">
+        <div>
+          <label class="field-label">아이디</label>
+          <input class="input" placeholder="admin">
+        </div>
+        <div>
+          <label class="field-label">비밀번호</label>
+          <input class="input" type="password" placeholder="••••••••">
+        </div>
+      </div>
+
+      <!-- 채널 + 스트림 -->
+      <div class="field-row">
+        <div>
+          <label class="field-label">채널 번호</label>
+          <input class="input" type="number" value="1">
+        </div>
+        <div>
+          <label class="field-label">스트림 타입</label>
+          <select class="select">
+            <option>Main Stream</option>
+            <option>Sub Stream</option>
+            <option>Third Stream</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 캡쳐 방식 -->
+      <div class="field">
+        <label class="field-label">캡쳐 방식</label>
+        <div class="radio-group">
+          <div class="radio-opt active" onclick="setRadio(this)">RTSP 스트림</div>
+          <div class="radio-opt" onclick="setRadio(this)">HTTP 스냅샷</div>
+        </div>
+      </div>
+
+      <!-- 접속 주소 + 자동 생성 -->
+      <div class="field">
+        <label class="field-label">접속 주소</label>
+        <div class="input-with-action">
+          <input class="input" id="cam-url" placeholder="rtsp://admin:****@192.168.1.10:554/Streaming/Channels/101">
+          <button class="btn btn-secondary whitespace-nowrap">
+            <iconify-icon icon="solar:magic-stick-3-linear"></iconify-icon>자동 생성
+          </button>
+        </div>
+      </div>
+
+      <!-- 테스트 버튼 2종 -->
+      <div class="field-row">
+        <button class="btn btn-secondary">
+          <iconify-icon icon="solar:plug-circle-linear"></iconify-icon>연결 확인
+        </button>
+        <button class="btn btn-secondary">
+          <iconify-icon icon="solar:camera-linear"></iconify-icon>캡쳐 테스트
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="text-xs font-medium flex items-center gap-2" style="color:var(--muted);">
+        <span class="dot dot-off"></span>연결 확인 후 저장하세요
+      </div>
+      <button class="btn btn-ghost ml-auto" onclick="closeCameraModal()">취소</button>
+      <button class="btn btn-primary">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const views = ['home','eut','equipment','import','report','library','settings','help'];
+function route(){
+  const hash = (location.hash || '#home').replace('#','');
+  const target = views.includes(hash) ? hash : 'home';
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+target)?.classList.add('active');
+  document.querySelectorAll('#nav .nav-item').forEach(a=>{
+    a.classList.toggle('active', a.dataset.route===target);
+  });
+}
+window.addEventListener('hashchange', route);
+
+// Settings tabs
+function selectTab(tab){
+  document.querySelectorAll('.settings-tab').forEach(t=>{
+    t.classList.toggle('active', t.dataset.tab===tab);
+  });
+  document.querySelectorAll('.settings-content').forEach(c=>{
+    c.classList.toggle('active', c.dataset.content===tab);
+  });
+}
+document.querySelectorAll('.settings-tab').forEach(t=>{
+  t.addEventListener('click', ()=>selectTab(t.dataset.tab));
+});
+
+// Sliders
+const root = document.documentElement;
+function bindSlider(id, varName, labelId){
+  const el = document.getElementById(id);
+  const label = document.getElementById(labelId);
+  el.addEventListener('input', e=>{
+    root.style.setProperty('--'+varName, e.target.value);
+    label.textContent = e.target.value;
+  });
+}
+bindSlider('s-variance','variance','v-variance');
+bindSlider('s-motion','motion','v-motion');
+bindSlider('s-density','density','v-density');
+
+// Reset
+document.getElementById('reset-design').addEventListener('click', ()=>{
+  const defaults = {variance:4, motion:4, density:5};
+  Object.entries(defaults).forEach(([k,v])=>{
+    root.style.setProperty('--'+k, v);
+    document.getElementById('s-'+k).value = v;
+    document.getElementById('v-'+k).textContent = v;
+  });
+  setAccent('#FF578A');
+});
+
+// Accent
+function hexToRgba(hex,a){const h=hex.replace('#','');const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);return `rgba(${r},${g},${b},${a})`;}
+function setAccent(hex){
+  root.style.setProperty('--accent', hex);
+  root.style.setProperty('--accent-soft', hexToRgba(hex, 0.10));
+  document.querySelectorAll('.color-swatch').forEach(s=>{
+    s.style.boxShadow = s.dataset.color===hex ? `0 0 0 2px #fff, 0 0 0 4px ${hex}` : 'none';
+  });
+}
+document.querySelectorAll('.color-swatch').forEach(s=>{
+  s.addEventListener('click', ()=>setAccent(s.dataset.color));
+});
+
+// Theme
+const html = document.documentElement;
+function applyTheme(t){
+  if(t==='system'){
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    html.classList.toggle('dark', dark);
+  } else {
+    html.classList.toggle('dark', t==='dark');
+  }
+  const dark = html.classList.contains('dark');
+  document.getElementById('theme-label').textContent = dark ? '다크' : '라이트';
+  document.getElementById('theme-icon').setAttribute('icon', dark ? 'solar:moon-linear' : 'solar:sun-linear');
+  document.querySelectorAll('.theme-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.theme===t);
+  });
+}
+document.querySelectorAll('.theme-btn').forEach(b=>{
+  b.addEventListener('click', ()=>applyTheme(b.dataset.theme));
+});
+document.getElementById('theme-toggle').addEventListener('click', ()=>{
+  applyTheme(html.classList.contains('dark') ? 'light' : 'dark');
+});
+
+// Folder grid: check-all
+const checkAll = document.getElementById('check-all');
+if(checkAll){
+  checkAll.addEventListener('change', e=>{
+    document.querySelectorAll('[data-content="folder"] tbody .grid-check').forEach(c=>c.checked = e.target.checked);
+  });
+}
+const cctvCheckAll = document.getElementById('cctv-check-all');
+if(cctvCheckAll){
+  cctvCheckAll.addEventListener('change', e=>{
+    document.querySelectorAll('[data-content="cctv"] tbody .grid-check').forEach(c=>c.checked = e.target.checked);
+  });
+}
+
+// Toggle (rows in cctv grid)
+document.querySelectorAll('[data-content="cctv"] .toggle').forEach(t=>{
+  t.addEventListener('click', ()=>t.classList.toggle('on'));
+});
+
+// Camera Modal
+function openCameraModal(){
+  document.getElementById('cam-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeCameraModal(){
+  document.getElementById('cam-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function setRadio(el){
+  el.parentElement.querySelectorAll('.radio-opt').forEach(o=>o.classList.remove('active'));
+  el.classList.add('active');
+}
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') closeCameraModal();
+});
+document.getElementById('cam-modal').addEventListener('click', e=>{
+  if(e.target.id==='cam-modal') closeCameraModal();
+});
+
+// Init
+route();
+selectTab('cctv');
+applyTheme('light');
+setAccent('#FF578A');
+</script>
+</body>
+</html>
