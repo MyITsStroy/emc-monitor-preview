@@ -383,7 +383,7 @@ body{
 </div>
 <script>
 (function(){
-  const HASH = "e86a1652f8df36d5d1bd44ce6b71ddb00b5527dd9e9b52c6221a0bf5c6cf9897";
+  const HASH = "eec957ed8f011070901be1ea41bed631ba581e488c97730e5b20f0b3fae84c8a";
   async function sha256(s){
     const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
     return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -617,14 +617,211 @@ body{
 
     <!-- IMPORT -->
     <section id="view-import" class="view section-pad">
-      <header class="mb-8">
-        <h1 class="text-3xl font-extrabold tracking-tight">가져오기</h1>
-        <p class="text-sm font-medium mt-2" style="color:var(--muted);">외부 측정 프로그램이 생성한 폴더를 시험 항목과 매핑합니다.</p>
+      <header class="flex flex-wrap items-end justify-between gap-4 mb-8">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight">가져오기</h1>
+          <p class="text-sm font-medium mt-2" style="color:var(--muted);">시험 폴더 하위를 스캔하여 측정 데이터를 식별하고 가져옵니다.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost"><iconify-icon icon="solar:folder-open-linear"></iconify-icon>폴더 열기</button>
+          <button class="btn btn-secondary"><iconify-icon icon="solar:refresh-linear"></iconify-icon>재스캔</button>
+          <button class="btn btn-accent"><iconify-icon icon="solar:download-minimalistic-bold"></iconify-icon>선택 가져오기</button>
+        </div>
       </header>
-      <div class="card">
-        <div class="text-center py-16" style="color:var(--muted);">
-          <iconify-icon icon="solar:download-square-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
-          <div class="text-sm font-bold">임포트 워크플로우 (세부 페이지 추후)</div>
+
+      <!-- Source path bar -->
+      <div class="card-flat mb-5 flex items-center gap-3 flex-wrap">
+        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">시험 폴더</div>
+        <div class="path-mono text-sm" style="color:var(--ink);">D:\EMC\TestData</div>
+        <span class="cat cat-rs" style="margin-left:.25rem;">설정에서 가져옴</span>
+        <div class="ml-auto text-xs font-medium" style="color:var(--muted);">
+          마지막 스캔 <span class="font-bold tnum" style="color:var(--ink);">2026-06-08 09:42</span> · 소요 1.8s
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="grid grid-cols-1 md:grid-cols-4 mb-5" style="gap:var(--gap-grid)">
+        <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">총 항목</div><div class="text-3xl num-hero tnum mt-1">124</div></div>
+        <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">신규</div><div class="text-3xl num-hero tnum mt-1" style="color:var(--emc-green);">87</div></div>
+        <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">중복</div><div class="text-3xl num-hero tnum mt-1" style="color:var(--emc-amber);">31</div></div>
+        <div class="card-flat"><div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">오류</div><div class="text-3xl num-hero tnum mt-1" style="color:var(--emc-red);">6</div></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="flex flex-wrap items-center gap-2 mb-4">
+        <select class="select">
+          <option>전체 상태</option><option>신규</option><option>중복</option><option>오류</option><option>가져옴</option>
+        </select>
+        <select class="select">
+          <option>전체 시험항목</option><option>CE101</option><option>CE102</option><option>CS101</option><option>CS114</option><option>RE101</option><option>RE102</option><option>RS103</option>
+        </select>
+        <select class="select">
+          <option>전체 장소</option><option>메인챔버</option><option>디버깅룸</option><option>야외 시험장</option><option>차폐룸 B</option>
+        </select>
+        <select class="select">
+          <option>전체 기간</option><option>오늘</option><option>최근 7일</option><option>최근 30일</option><option>사용자 지정</option>
+        </select>
+        <div class="ml-auto relative">
+          <iconify-icon icon="solar:magnifer-linear" class="absolute" style="left:1rem;top:50%;transform:translateY(-50%);color:var(--muted);"></iconify-icon>
+          <input type="text" class="select" style="padding-left:2.6rem;width:240px;" placeholder="EUT·경로 검색">
+        </div>
+      </div>
+
+      <!-- DataGrid -->
+      <div class="card grid-card">
+        <div class="flex items-center justify-between p-5 border-b" style="border-color:var(--border);">
+          <div>
+            <h2 class="text-xl font-bold tracking-tight">스캔 결과</h2>
+            <div class="text-xs font-medium mt-1" style="color:var(--muted);">표시 8건 · 선택 0건</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost"><iconify-icon icon="solar:eye-closed-linear"></iconify-icon>중복 숨김</button>
+            <button class="btn btn-ghost"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon>오류 항목 제외</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="grid-table">
+            <thead>
+              <tr>
+                <th class="w-10"><input type="checkbox" class="grid-check" id="import-check-all"></th>
+                <th class="w-12">#</th>
+                <th class="w-24">상태</th>
+                <th>EUT명</th>
+                <th class="w-24">시험항목</th>
+                <th class="w-28">장소</th>
+                <th class="w-40">측정 일시</th>
+                <th class="w-32">형식</th>
+                <th class="w-20 text-right">파일</th>
+                <th class="w-24 text-right">용량</th>
+                <th>상대 경로</th>
+                <th class="w-16 text-right">작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">1</td>
+                <td><span class="badge badge-active"><span class="dot dot-on" style="margin-right:0;"></span>신규</span></td>
+                <td><div class="font-bold">RadarUnit-A</div><div class="text-xs font-medium" style="color:var(--muted);">Naval · Surface</div></td>
+                <td><span class="cat cat-ce">CE101</span></td>
+                <td><span class="badge badge-archived">메인챔버</span></td>
+                <td class="tnum font-medium">2026-06-01 14:22</td>
+                <td><span class="cat cat-rs">TDMS</span> <span class="cat cat-ce">PNG</span></td>
+                <td class="text-right tnum font-bold">14</td>
+                <td class="text-right tnum font-medium">42.1 MB</td>
+                <td class="path-mono">RadarUnit-A\CE101\2026-06-01\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">2</td>
+                <td><span class="badge badge-active"><span class="dot dot-on" style="margin-right:0;"></span>신규</span></td>
+                <td><div class="font-bold">RadarUnit-A</div><div class="text-xs font-medium" style="color:var(--muted);">Naval · Surface</div></td>
+                <td><span class="cat cat-ce">CE102</span></td>
+                <td><span class="badge badge-archived">메인챔버</span></td>
+                <td class="tnum font-medium">2026-06-02 09:15</td>
+                <td><span class="cat cat-rs">TDMS</span> <span class="cat cat-ce">PNG</span></td>
+                <td class="text-right tnum font-bold">12</td>
+                <td class="text-right tnum font-medium">38.7 MB</td>
+                <td class="path-mono">RadarUnit-A\CE102\2026-06-02\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">3</td>
+                <td><span class="badge badge-pending">중복</span></td>
+                <td><div class="font-bold">IFF-Box</div><div class="text-xs font-medium" style="color:var(--muted);">Air · Fixed-wing</div></td>
+                <td><span class="cat cat-cs">CS114</span></td>
+                <td><span class="badge badge-archived">디버깅룸</span></td>
+                <td class="tnum font-medium">2026-06-03 11:04</td>
+                <td><span class="cat cat-cs">CSV</span></td>
+                <td class="text-right tnum font-bold">8</td>
+                <td class="text-right tnum font-medium">5.2 MB</td>
+                <td class="path-mono">IFF-Box\CS114\2026-06-03\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">4</td>
+                <td><span class="badge badge-active"><span class="dot dot-on" style="margin-right:0;"></span>신규</span></td>
+                <td><div class="font-bold">IFF-Box</div><div class="text-xs font-medium" style="color:var(--muted);">Air · Fixed-wing</div></td>
+                <td><span class="cat cat-rs">RS103</span></td>
+                <td><span class="badge badge-archived">차폐룸 B</span></td>
+                <td class="tnum font-medium">2026-06-04 13:50</td>
+                <td><span class="cat cat-rs">TDMS</span> <span class="cat cat-ce">PNG</span> <span class="cat cat-cs">CSV</span></td>
+                <td class="text-right tnum font-bold">22</td>
+                <td class="text-right tnum font-medium">128.4 MB</td>
+                <td class="path-mono">IFF-Box\RS103\2026-06-04\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">5</td>
+                <td><span class="badge badge-active"><span class="dot dot-on" style="margin-right:0;"></span>신규</span></td>
+                <td><div class="font-bold">Comms-Module</div><div class="text-xs font-medium" style="color:var(--muted);">Ground · Vehicle</div></td>
+                <td><span class="cat cat-re">RE102</span></td>
+                <td><span class="badge badge-archived">메인챔버</span></td>
+                <td class="tnum font-medium">2026-06-05 10:38</td>
+                <td><span class="cat cat-rs">TDMS</span></td>
+                <td class="text-right tnum font-bold">9</td>
+                <td class="text-right tnum font-medium">28.9 MB</td>
+                <td class="path-mono">Comms-Module\RE102\2026-06-05\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">6</td>
+                <td><span class="badge badge-error">오류</span></td>
+                <td><div class="font-bold">Comms-Module</div><div class="text-xs font-medium" style="color:var(--emc-red);">TDMS 헤더 파싱 실패</div></td>
+                <td><span class="cat cat-re">RE101</span></td>
+                <td><span class="badge badge-archived">야외 시험장</span></td>
+                <td class="tnum font-medium">2026-06-05 15:12</td>
+                <td><span class="cat cat-rs">TDMS</span></td>
+                <td class="text-right tnum font-bold">3</td>
+                <td class="text-right tnum font-medium">0.4 MB</td>
+                <td class="path-mono">Comms-Module\RE101\2026-06-05\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">7</td>
+                <td><span class="badge badge-archived">가져옴</span></td>
+                <td><div class="font-bold">Nav-Console</div><div class="text-xs font-medium" style="color:var(--muted);">Naval · Sub-surface</div></td>
+                <td><span class="cat cat-cs">CS101</span></td>
+                <td><span class="badge badge-archived">디버깅룸</span></td>
+                <td class="tnum font-medium">2026-05-30 16:48</td>
+                <td><span class="cat cat-rs">TDMS</span> <span class="cat cat-ce">PNG</span></td>
+                <td class="text-right tnum font-bold">11</td>
+                <td class="text-right tnum font-medium">34.6 MB</td>
+                <td class="path-mono">Nav-Console\CS101\2026-05-30\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+              <tr class="grid-row">
+                <td><input type="checkbox" class="grid-check"></td>
+                <td class="font-bold tnum" style="color:var(--muted);">8</td>
+                <td><span class="badge badge-active"><span class="dot dot-on" style="margin-right:0;"></span>신규</span></td>
+                <td><div class="font-bold">Nav-Console</div><div class="text-xs font-medium" style="color:var(--muted);">Naval · Sub-surface</div></td>
+                <td><span class="cat cat-re">RE102</span></td>
+                <td><span class="badge badge-archived">차폐룸 B</span></td>
+                <td class="tnum font-medium">2026-06-07 09:02</td>
+                <td><span class="cat cat-rs">TDMS</span> <span class="cat cat-ce">PNG</span></td>
+                <td class="text-right tnum font-bold">16</td>
+                <td class="text-right tnum font-medium">52.3 MB</td>
+                <td class="path-mono">Nav-Console\RE102\2026-06-07\</td>
+                <td class="text-right"><button class="btn-row" title="상세"><iconify-icon icon="solar:eye-linear"></iconify-icon></button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="flex items-center justify-between p-4 border-t" style="border-color:var(--border);">
+          <div class="text-xs font-medium" style="color:var(--muted);">총 124건 중 1–8</div>
+          <div class="flex gap-1">
+            <button class="btn-row" title="이전"><iconify-icon icon="solar:alt-arrow-left-linear"></iconify-icon></button>
+            <button class="btn-row" style="background:var(--accent);color:#fff;">1</button>
+            <button class="btn-row">2</button>
+            <button class="btn-row">3</button>
+            <button class="btn-row" title="다음"><iconify-icon icon="solar:alt-arrow-right-linear"></iconify-icon></button>
+          </div>
         </div>
       </div>
     </section>
@@ -1369,6 +1566,12 @@ const checkAll = document.getElementById('check-all');
 if(checkAll){
   checkAll.addEventListener('change', e=>{
     document.querySelectorAll('[data-content="folder"] tbody .grid-check').forEach(c=>c.checked = e.target.checked);
+  });
+}
+const importCheckAll = document.getElementById('import-check-all');
+if(importCheckAll){
+  importCheckAll.addEventListener('change', e=>{
+    document.querySelectorAll('#view-import tbody .grid-check').forEach(c=>c.checked = e.target.checked);
   });
 }
 const cctvCheckAll = document.getElementById('cctv-check-all');
