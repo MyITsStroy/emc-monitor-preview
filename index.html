@@ -444,6 +444,9 @@ body{
       <a data-route="library" href="#library" class="nav-item">
         <iconify-icon icon="solar:book-2-linear"></iconify-icon><span>라이브러리</span>
       </a>
+      <a data-route="db" href="#db" class="nav-item">
+        <iconify-icon icon="solar:database-linear"></iconify-icon><span>DB 뷰어</span>
+      </a>
       <div class="h-px my-3 mx-3" style="background:var(--border);"></div>
       <a data-route="settings" href="#settings" class="nav-item">
         <iconify-icon icon="solar:settings-minimalistic-linear"></iconify-icon><span>설정</span>
@@ -850,6 +853,49 @@ body{
         <div class="text-center py-16" style="color:var(--muted);">
           <iconify-icon icon="solar:book-2-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
           <div class="text-sm font-bold">리미트 라이브러리 그리드 (세부 페이지 추후)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DB VIEWER -->
+    <section id="view-db" class="view section-pad">
+      <header class="flex flex-wrap items-end justify-between gap-4 mb-8">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight">DB 뷰어</h1>
+          <p class="text-sm font-medium mt-2" style="color:var(--muted);">SQLite 스키마 검토 및 데이터 미리보기.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" onclick="dbReload()">
+            <iconify-icon icon="solar:refresh-linear"></iconify-icon>새로고침
+          </button>
+        </div>
+      </header>
+
+      <div class="card-flat mb-5 flex items-center gap-3 flex-wrap">
+        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">DB 파일</div>
+        <div class="path-mono text-sm" style="color:var(--ink);">db/emc.db</div>
+        <span class="cat cat-rs" id="db-status">로드 대기</span>
+        <div class="ml-auto flex items-center gap-3">
+          <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">테이블</span>
+          <select id="db-table-select" class="select" disabled>
+            <option>로딩 중...</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card grid-card">
+        <div class="flex items-center justify-between p-5 border-b" style="border-color:var(--border);">
+          <div>
+            <h2 class="text-xl font-bold tracking-tight" id="db-table-name">테이블 선택</h2>
+            <div class="text-xs font-medium mt-1" style="color:var(--muted);" id="db-row-info">콤보박스에서 테이블을 선택하세요</div>
+          </div>
+          <div class="path-mono text-xs" id="db-table-type" style="color:var(--muted);"></div>
+        </div>
+        <div id="db-grid-container" class="overflow-x-auto">
+          <div class="text-center py-16" style="color:var(--muted);">
+            <iconify-icon icon="solar:database-linear" class="text-5xl block mx-auto mb-3"></iconify-icon>
+            <div class="text-sm font-bold">테이블 선택 시 데이터 표시</div>
+          </div>
         </div>
       </div>
     </section>
@@ -1475,7 +1521,7 @@ body{
 </div>
 
 <script>
-const views = ['home','eut','equipment','import','report','library','settings','help'];
+const views = ['home','eut','equipment','import','report','library','db','settings','help'];
 function route(){
   const hash = (location.hash || '#home').replace('#','');
   const target = views.includes(hash) ? hash : 'home';
@@ -1484,6 +1530,7 @@ function route(){
   document.querySelectorAll('#nav .nav-item').forEach(a=>{
     a.classList.toggle('active', a.dataset.route===target);
   });
+  if(target==='db') dbInit();
 }
 window.addEventListener('hashchange', route);
 
@@ -1605,6 +1652,91 @@ document.addEventListener('keydown', e=>{
 document.getElementById('cam-modal').addEventListener('click', e=>{
   if(e.target.id==='cam-modal') closeCameraModal();
 });
+
+// ============ DB VIEWER ============
+let _db = null;
+let _sqljs = null;
+let _dbLoading = false;
+
+function _loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function dbInit(){
+  if(_db || _dbLoading) return;
+  _dbLoading = true;
+  const statusEl = document.getElementById('db-status');
+  const selEl = document.getElementById('db-table-select');
+  statusEl.textContent = 'sql.js 로드 중...';
+  try {
+    if(!_sqljs){
+      await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js');
+      _sqljs = await initSqlJs({ locateFile: f => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/'+f });
+    }
+    statusEl.textContent = 'DB 파일 로드 중...';
+    const res = await fetch('db/emc.db');
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const buf = await res.arrayBuffer();
+    _db = new _sqljs.Database(new Uint8Array(buf));
+
+    const r = _db.exec("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name");
+    const items = r.length ? r[0].values : [];
+    selEl.innerHTML = '<option value="">— 선택 —</option>' + items.map(([n,t])=>
+      `<option value="${n}" data-type="${t}">${n}${t==='view'?' (VIEW)':''}</option>`).join('');
+    selEl.disabled = false;
+    selEl.onchange = ()=>{ if(selEl.value) dbShowTable(selEl.value, selEl.options[selEl.selectedIndex].dataset.type); };
+
+    statusEl.textContent = `${items.length}개 객체 로드됨`;
+  } catch(e){
+    statusEl.textContent = '오류: ' + e.message;
+    statusEl.style.background = 'rgba(239,68,68,0.14)';
+    statusEl.style.color = '#B91C1C';
+  } finally {
+    _dbLoading = false;
+  }
+}
+
+function _esc(s){
+  if(s===null||s===undefined) return '<span style="color:var(--muted);font-style:italic;">NULL</span>';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function dbShowTable(name, type){
+  if(!_db) return;
+  const nameEl = document.getElementById('db-table-name');
+  const infoEl = document.getElementById('db-row-info');
+  const typeEl = document.getElementById('db-table-type');
+  const cont = document.getElementById('db-grid-container');
+  nameEl.textContent = name;
+  typeEl.textContent = (type==='view'?'VIEW':'TABLE');
+
+  let total = 0;
+  try {
+    const cr = _db.exec(`SELECT COUNT(*) FROM "${name}"`);
+    total = cr[0]?.values[0][0] ?? 0;
+  } catch(e){}
+
+  const LIMIT = 500;
+  const r = _db.exec(`SELECT * FROM "${name}" LIMIT ${LIMIT}`);
+  if(!r.length || r[0].values.length===0){
+    cont.innerHTML = '<div class="text-center py-16" style="color:var(--muted);"><div class="text-sm font-bold">빈 테이블</div></div>';
+    infoEl.textContent = '행 0건';
+    return;
+  }
+  const cols = r[0].columns;
+  const rows = r[0].values;
+  infoEl.textContent = `행 ${rows.length}건${total>rows.length?' / 전체 '+total+'건 (500건 제한)':' / 전체 '+total+'건'}`;
+  cont.innerHTML = `<table class="grid-table">
+    <thead><tr>${cols.map(c=>`<th>${_esc(c)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(row=>`<tr class="grid-row">${row.map(v=>`<td class="${typeof v==='number'?'tnum':''}">${_esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function dbReload(){ _db = null; document.getElementById('db-table-select').disabled = true; dbInit(); }
 
 // Init
 route();
