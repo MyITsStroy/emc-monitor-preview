@@ -862,11 +862,14 @@ body{
       <header class="flex flex-wrap items-end justify-between gap-4 mb-8">
         <div>
           <h1 class="text-3xl font-extrabold tracking-tight">DB 뷰어</h1>
-          <p class="text-sm font-medium mt-2" style="color:var(--muted);">SQLite 스키마 검토 및 데이터 미리보기.</p>
+          <p class="text-sm font-medium mt-2" style="color:var(--muted);">SQLite 스키마·데이터 검토 및 메모리 내 편집. 변경은 다운로드 후 서버 파일 교체.</p>
         </div>
         <div class="flex gap-2">
-          <button class="btn btn-secondary" onclick="dbReload()">
-            <iconify-icon icon="solar:refresh-linear"></iconify-icon>새로고침
+          <button class="btn btn-ghost" onclick="dbReload()">
+            <iconify-icon icon="solar:refresh-linear"></iconify-icon>원본 새로고침
+          </button>
+          <button class="btn btn-secondary" onclick="dbDownload()">
+            <iconify-icon icon="solar:download-minimalistic-linear"></iconify-icon>변경본 다운로드
           </button>
         </div>
       </header>
@@ -875,6 +878,7 @@ body{
         <div class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">DB 파일</div>
         <div class="path-mono text-sm" style="color:var(--ink);">db/emc.db</div>
         <span class="cat cat-rs" id="db-status">로드 대기</span>
+        <span class="cat cat-ce" id="db-dirty" style="display:none;">변경 0건</span>
         <div class="ml-auto flex items-center gap-3">
           <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--muted);">테이블</span>
           <select id="db-table-select" class="select" disabled>
@@ -889,7 +893,12 @@ body{
             <h2 class="text-xl font-bold tracking-tight" id="db-table-name">테이블 선택</h2>
             <div class="text-xs font-medium mt-1" style="color:var(--muted);" id="db-row-info">콤보박스에서 테이블을 선택하세요</div>
           </div>
-          <div class="path-mono text-xs" id="db-table-type" style="color:var(--muted);"></div>
+          <div class="flex gap-2 items-center">
+            <span class="path-mono text-xs" id="db-table-type" style="color:var(--muted);"></span>
+            <button class="btn btn-accent" id="db-add-btn" onclick="dbAddRow()" style="display:none;">
+              <iconify-icon icon="solar:add-circle-bold"></iconify-icon>행 추가
+            </button>
+          </div>
         </div>
         <div id="db-grid-container" class="overflow-x-auto">
           <div class="text-center py-16" style="color:var(--muted);">
@@ -899,6 +908,22 @@ body{
         </div>
       </div>
     </section>
+
+    <!-- DB Row Edit Modal -->
+    <div id="db-row-modal" class="modal-backdrop">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="text-lg font-bold" id="db-row-modal-title">행 편집</h3>
+          <button class="modal-close" onclick="dbCloseModal()"><iconify-icon icon="solar:close-circle-linear"></iconify-icon></button>
+        </div>
+        <div class="modal-body" id="db-row-modal-body"></div>
+        <div class="modal-footer">
+          <span class="text-xs" style="color:var(--muted);">변경은 메모리에서만 반영</span>
+          <button class="btn btn-ghost ml-auto" onclick="dbCloseModal()">취소</button>
+          <button class="btn btn-accent" onclick="dbSaveRow()">저장</button>
+        </div>
+      </div>
+    </div>
 
     <!-- SETTINGS -->
     <section id="view-settings" class="view">
@@ -1657,6 +1682,12 @@ document.getElementById('cam-modal').addEventListener('click', e=>{
 let _db = null;
 let _sqljs = null;
 let _dbLoading = false;
+let _dbDirty = 0;
+let _curTable = null;
+let _curType  = null;
+let _curCols  = [];        // [{name,type,notnull,dflt,pk}]
+let _editMode = null;      // 'edit' | 'new'
+let _editRowid = null;
 
 function _loadScript(src){
   return new Promise((resolve, reject)=>{
@@ -1682,15 +1713,22 @@ async function dbInit(){
     if(!res.ok) throw new Error('HTTP '+res.status);
     const buf = await res.arrayBuffer();
     _db = new _sqljs.Database(new Uint8Array(buf));
+    _dbDirty = 0;
+    _updateDirty();
 
     const r = _db.exec("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name");
     const items = r.length ? r[0].values : [];
     selEl.innerHTML = '<option value="">— 선택 —</option>' + items.map(([n,t])=>
       `<option value="${n}" data-type="${t}">${n}${t==='view'?' (VIEW)':''}</option>`).join('');
     selEl.disabled = false;
-    selEl.onchange = ()=>{ if(selEl.value) dbShowTable(selEl.value, selEl.options[selEl.selectedIndex].dataset.type); };
+    selEl.onchange = ()=>{
+      if(selEl.value) dbShowTable(selEl.value, selEl.options[selEl.selectedIndex].dataset.type);
+      else _clearGrid();
+    };
 
     statusEl.textContent = `${items.length}개 객체 로드됨`;
+    statusEl.style.background = '';
+    statusEl.style.color = '';
   } catch(e){
     statusEl.textContent = '오류: ' + e.message;
     statusEl.style.background = 'rgba(239,68,68,0.14)';
@@ -1705,38 +1743,235 @@ function _esc(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function dbShowTable(name, type){
-  if(!_db) return;
-  const nameEl = document.getElementById('db-table-name');
-  const infoEl = document.getElementById('db-row-info');
-  const typeEl = document.getElementById('db-table-type');
-  const cont = document.getElementById('db-grid-container');
-  nameEl.textContent = name;
-  typeEl.textContent = (type==='view'?'VIEW':'TABLE');
-
-  let total = 0;
-  try {
-    const cr = _db.exec(`SELECT COUNT(*) FROM "${name}"`);
-    total = cr[0]?.values[0][0] ?? 0;
-  } catch(e){}
-
-  const LIMIT = 500;
-  const r = _db.exec(`SELECT * FROM "${name}" LIMIT ${LIMIT}`);
-  if(!r.length || r[0].values.length===0){
-    cont.innerHTML = '<div class="text-center py-16" style="color:var(--muted);"><div class="text-sm font-bold">빈 테이블</div></div>';
-    infoEl.textContent = '행 0건';
-    return;
-  }
-  const cols = r[0].columns;
-  const rows = r[0].values;
-  infoEl.textContent = `행 ${rows.length}건${total>rows.length?' / 전체 '+total+'건 (500건 제한)':' / 전체 '+total+'건'}`;
-  cont.innerHTML = `<table class="grid-table">
-    <thead><tr>${cols.map(c=>`<th>${_esc(c)}</th>`).join('')}</tr></thead>
-    <tbody>${rows.map(row=>`<tr class="grid-row">${row.map(v=>`<td class="${typeof v==='number'?'tnum':''}">${_esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>
-  </table>`;
+function _attrEsc(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 }
 
-function dbReload(){ _db = null; document.getElementById('db-table-select').disabled = true; dbInit(); }
+function _updateDirty(){
+  const el = document.getElementById('db-dirty');
+  if(_dbDirty>0){ el.style.display=''; el.textContent='변경 '+_dbDirty+'건 (미저장)'; }
+  else { el.style.display='none'; }
+}
+
+function _clearGrid(){
+  _curTable = null; _curType = null; _curCols = [];
+  document.getElementById('db-table-name').textContent = '테이블 선택';
+  document.getElementById('db-row-info').textContent = '콤보박스에서 테이블을 선택하세요';
+  document.getElementById('db-table-type').textContent = '';
+  document.getElementById('db-add-btn').style.display = 'none';
+  document.getElementById('db-grid-container').innerHTML =
+    '<div class="text-center py-16" style="color:var(--muted);"><iconify-icon icon="solar:database-linear" class="text-5xl block mx-auto mb-3"></iconify-icon><div class="text-sm font-bold">테이블 선택 시 데이터 표시</div></div>';
+}
+
+function dbShowTable(name, type){
+  if(!_db) return;
+  _curTable = name;
+  _curType  = type;
+
+  const isView = (type === 'view');
+
+  // Always pull columns from schema (works even when 0 rows)
+  const info = _db.exec(`PRAGMA table_info("${name}")`);
+  _curCols = info.length ? info[0].values.map(r => ({
+    name: r[1], type: r[2], notnull: !!r[3], dflt: r[4], pk: !!r[5]
+  })) : [];
+
+  document.getElementById('db-table-name').textContent = name;
+  document.getElementById('db-table-type').textContent = isView ? 'VIEW (읽기 전용)' : 'TABLE';
+  document.getElementById('db-add-btn').style.display = isView ? 'none' : '';
+
+  const LIMIT = 500;
+  let total = 0;
+  try { total = _db.exec(`SELECT COUNT(*) FROM "${name}"`)[0]?.values[0][0] ?? 0; } catch(e){}
+
+  // Fetch rows with rowid (skip rowid for views)
+  let rows = [];
+  try {
+    const sql = isView
+      ? `SELECT * FROM "${name}" LIMIT ${LIMIT}`
+      : `SELECT rowid, * FROM "${name}" LIMIT ${LIMIT}`;
+    const r = _db.exec(sql);
+    if(r.length) rows = r[0].values;
+  } catch(e){
+    document.getElementById('db-grid-container').innerHTML =
+      '<div class="text-center py-16" style="color:var(--emc-red);"><div class="text-sm font-bold">조회 오류: '+_esc(e.message)+'</div></div>';
+    return;
+  }
+
+  document.getElementById('db-row-info').textContent =
+    `행 ${rows.length}건${total>rows.length?' / 전체 '+total+'건 (500건 제한)':(total?(' / 전체 '+total+'건'):'')}`;
+
+  // Header
+  const header = `<thead><tr>
+    ${_curCols.map(c=>`<th>${_esc(c.name)}${c.pk?' <span style="color:var(--accent);">★</span>':''}</th>`).join('')}
+    ${!isView?'<th class="w-20 text-right">작업</th>':''}
+  </tr></thead>`;
+
+  // Body
+  let body;
+  if(rows.length === 0){
+    const colspan = _curCols.length + (isView?0:1);
+    body = `<tbody><tr><td colspan="${colspan}" class="text-center py-12" style="color:var(--muted);">
+      <div class="text-sm font-bold">데이터 없음</div>
+      ${!isView?'<div class="text-xs font-medium mt-1">상단 "행 추가" 버튼으로 신규 입력</div>':''}
+    </td></tr></tbody>`;
+  } else {
+    body = '<tbody>' + rows.map(row => {
+      const rowid = isView ? null : row[0];
+      const values = isView ? row : row.slice(1);
+      return `<tr class="grid-row">
+        ${values.map((v,i)=>`<td class="${typeof v==='number'?'tnum':''}">${_esc(v)}</td>`).join('')}
+        ${!isView?`<td class="text-right whitespace-nowrap">
+          <button class="btn-row" title="수정" onclick="dbEditRow(${rowid})"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+          <button class="btn-row danger" title="삭제" onclick="dbDeleteRow(${rowid})"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+        </td>`:''}
+      </tr>`;
+    }).join('') + '</tbody>';
+  }
+
+  document.getElementById('db-grid-container').innerHTML = `<table class="grid-table">${header}${body}</table>`;
+}
+
+function _renderRowForm(values){
+  // values: {colName: value}
+  return _curCols.map(c => {
+    const v = values?.[c.name];
+    const isAutoPk = c.pk && (c.type||'').toUpperCase().includes('INT');
+    const useTextarea = (c.type||'').toUpperCase()==='TEXT' && c.name.match(/description|memo|description/i);
+    const inputId = 'db-f-'+c.name;
+    let inputHtml;
+    if(useTextarea){
+      inputHtml = `<textarea id="${inputId}" class="input" rows="2" ${isAutoPk?'readonly':''}>${_esc(v ?? '')}</textarea>`;
+    } else {
+      const nullChecked = (v===null||v===undefined) ? 'checked' : '';
+      inputHtml = `
+        <div class="input-with-action">
+          <input id="${inputId}" type="text" class="input" value="${_attrEsc(v)}" ${isAutoPk?'readonly':''}>
+          <label class="flex items-center gap-1 text-xs font-bold" style="color:var(--muted);white-space:nowrap;">
+            <input type="checkbox" id="${inputId}-null" ${nullChecked} ${isAutoPk?'disabled':''}>NULL
+          </label>
+        </div>`;
+    }
+    return `<div class="field">
+      <label class="field-label">${_esc(c.name)} <span style="text-transform:none;color:var(--muted);font-weight:600;">${_esc(c.type)}${c.notnull?' · NOT NULL':''}${c.pk?' · PK':''}${isAutoPk?' (자동)':''}</span></label>
+      ${inputHtml}
+    </div>`;
+  }).join('');
+}
+
+function dbEditRow(rowid){
+  if(!_db || !_curTable) return;
+  const r = _db.exec(`SELECT * FROM "${_curTable}" WHERE rowid=${rowid}`);
+  if(!r.length) return;
+  const cols = r[0].columns;
+  const vals = r[0].values[0];
+  const valMap = {};
+  cols.forEach((c,i)=> valMap[c] = vals[i]);
+  _editMode = 'edit'; _editRowid = rowid;
+  document.getElementById('db-row-modal-title').textContent = `행 편집 — ${_curTable} #${rowid}`;
+  document.getElementById('db-row-modal-body').innerHTML = _renderRowForm(valMap);
+  document.getElementById('db-row-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function dbAddRow(){
+  if(!_db || !_curTable || _curType==='view') return;
+  _editMode = 'new'; _editRowid = null;
+  document.getElementById('db-row-modal-title').textContent = `행 추가 — ${_curTable}`;
+  document.getElementById('db-row-modal-body').innerHTML = _renderRowForm({});
+  document.getElementById('db-row-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function dbCloseModal(){
+  document.getElementById('db-row-modal').classList.remove('open');
+  document.body.style.overflow = '';
+  _editMode = null; _editRowid = null;
+}
+
+function dbSaveRow(){
+  if(!_db || !_curTable || !_editMode) return;
+  // Collect field values
+  const data = {};
+  for(const c of _curCols){
+    const inp = document.getElementById('db-f-'+c.name);
+    const nullChk = document.getElementById('db-f-'+c.name+'-null');
+    const isAutoPk = c.pk && (c.type||'').toUpperCase().includes('INT');
+    if(isAutoPk && _editMode==='new') continue;
+    if(nullChk && nullChk.checked){ data[c.name] = null; }
+    else if(inp){
+      const raw = inp.value;
+      if((c.type||'').match(/INT|REAL|NUM/i) && raw !== ''){
+        const n = Number(raw);
+        data[c.name] = isNaN(n) ? raw : n;
+      } else {
+        data[c.name] = raw === '' && c.notnull===false ? null : raw;
+      }
+    }
+  }
+  try {
+    if(_editMode === 'new'){
+      const cols = Object.keys(data);
+      const placeholders = cols.map(()=>'?').join(',');
+      const stmt = _db.prepare(`INSERT INTO "${_curTable}" (${cols.map(c=>`"${c}"`).join(',')}) VALUES (${placeholders})`);
+      stmt.run(cols.map(c=>data[c]));
+      stmt.free();
+    } else {
+      const cols = Object.keys(data).filter(c=>{
+        const cc = _curCols.find(x=>x.name===c);
+        return !(cc && cc.pk && (cc.type||'').toUpperCase().includes('INT'));
+      });
+      const setClause = cols.map(c=>`"${c}"=?`).join(',');
+      const stmt = _db.prepare(`UPDATE "${_curTable}" SET ${setClause} WHERE rowid=?`);
+      stmt.run([...cols.map(c=>data[c]), _editRowid]);
+      stmt.free();
+    }
+    _dbDirty++; _updateDirty();
+    dbCloseModal();
+    dbShowTable(_curTable, _curType);
+  } catch(e){
+    alert('저장 오류: ' + e.message);
+  }
+}
+
+function dbDeleteRow(rowid){
+  if(!_db || !_curTable) return;
+  if(!confirm(`${_curTable} #${rowid} 삭제 (메모리 내). 진행?`)) return;
+  try {
+    _db.run(`DELETE FROM "${_curTable}" WHERE rowid=?`, [rowid]);
+    _dbDirty++; _updateDirty();
+    dbShowTable(_curTable, _curType);
+  } catch(e){
+    alert('삭제 오류: ' + e.message);
+  }
+}
+
+function dbDownload(){
+  if(!_db){ alert('DB가 로드되지 않았습니다.'); return; }
+  const data = _db.export();
+  const blob = new Blob([data], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'emc.db';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+function dbReload(){
+  if(_dbDirty>0 && !confirm(`미저장 변경 ${_dbDirty}건이 있습니다. 새로고침 시 폐기됨. 진행?`)) return;
+  _db = null; _dbDirty = 0; _updateDirty();
+  document.getElementById('db-table-select').disabled = true;
+  _clearGrid();
+  dbInit();
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && document.getElementById('db-row-modal').classList.contains('open')) dbCloseModal();
+});
+document.getElementById('db-row-modal').addEventListener('click', e=>{
+  if(e.target.id==='db-row-modal') dbCloseModal();
+});
 
 // Init
 route();
