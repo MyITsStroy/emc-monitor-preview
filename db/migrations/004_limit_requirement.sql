@@ -86,64 +86,7 @@ CREATE TABLE IF NOT EXISTS limit_point (
 
 CREATE INDEX idx_pt_profile ON limit_point(limit_profile_id, frequency_hz);
 
--- ============================================================
--- 5. limit_profile 샘플 시드 (3건: curve / flat / impulse)
--- ============================================================
-
--- CE102 curve (461G, 28V DC, Avg)
-INSERT INTO limit_profile (standard_test_item_id, requirement_id, name, profile_type, interpolation, detector_override)
-SELECT
-  sti.id,
-  (SELECT id FROM requirement WHERE code='DC-28V'),
-  'CE102 28VDC Avg', 'curve', 'lin-log', 'Avg'
-FROM standard_test_item sti
-JOIN standard s ON s.id=sti.standard_id
-JOIN test_item t ON t.id=sti.test_item_id
-WHERE s.code='MIL-STD-461G' AND t.code='CE102';
-
-INSERT INTO limit_point (limit_profile_id, frequency_hz, value)
-SELECT lp.id, x.freq, x.val
-FROM limit_profile lp
-CROSS JOIN (
-  SELECT 10000.0    AS freq, 94.0 AS val UNION ALL
-  SELECT 150000.0,            80.0       UNION ALL
-  SELECT 500000.0,            60.0       UNION ALL
-  SELECT 10000000.0,          60.0
-) x
-WHERE lp.name='CE102 28VDC Avg';
-
--- RS103 flat (461G, Navy-Surface, 200 V/m)
-INSERT INTO limit_profile (standard_test_item_id, requirement_id, name, profile_type)
-SELECT
-  sti.id,
-  (SELECT id FROM requirement WHERE code='Navy-Surface'),
-  'RS103 Navy-Surface 200V/m', 'flat'
-FROM standard_test_item sti
-JOIN standard s ON s.id=sti.standard_id
-JOIN test_item t ON t.id=sti.test_item_id
-WHERE s.code='MIL-STD-461G' AND t.code='RS103';
-
-INSERT INTO limit_point (limit_profile_id, frequency_hz, value)
-SELECT lp.id, x.freq, x.val
-FROM limit_profile lp
-CROSS JOIN (
-  SELECT 2000000.0     AS freq, 200.0 AS val UNION ALL
-  SELECT 40000000000.0,         200.0
-) x
-WHERE lp.name='RS103 Navy-Surface 200V/m';
-
--- CS115 impulse (461G, requirement 없음)
-INSERT INTO limit_profile (standard_test_item_id, requirement_id, name, profile_type)
-SELECT
-  sti.id, NULL, 'CS115 Standard Impulse', 'impulse'
-FROM standard_test_item sti
-JOIN standard s ON s.id=sti.standard_id
-JOIN test_item t ON t.id=sti.test_item_id
-WHERE s.code='MIL-STD-461G' AND t.code='CS115';
-
-INSERT INTO limit_point (limit_profile_id, frequency_hz, value, memo)
-SELECT lp.id, NULL, 5.0, 'Peak amplitude'
-FROM limit_profile lp
-WHERE lp.name='CS115 Standard Impulse';
+-- limit_profile / limit_point 시드 없음.
+-- 461 원문 조사 후 별도 마이그레이션으로 정확한 값 입력.
 
 PRAGMA foreign_keys = ON;
